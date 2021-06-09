@@ -49,12 +49,19 @@ void bs(int n, int * vetor)
         }
 } 
 
-//int saco[ARRAY_NUMBER][ARRAY_SIZE];
-//int vetor_recebido[ARRAY_SIZE+1];
+void inicializa()
+{
+    int i;
+    for (i=0 ; i<ARRAY_SIZE; i++)              /* init array with worst case for sorting */
+        vetor[i] = ARRAY_SIZE-i;
+}
 
 
 //int (*saco)[ARRAY_NUMBER] = malloc(ARRAY_SIZE * sizeof *saco);
- 
+
+int vetor[ARRAY_SIZE];
+int tam_vetor;
+
 main(int argc, char** argv)
 {
 int my_rank;  /* Identificador do processo */
@@ -76,108 +83,50 @@ double t1,t2;
 t1 = MPI_Wtime();  // inicia a contagem do tempo
 inteiro[1]=t1;
 
-int vetor_recebido[ARRAY_SIZE+1];
-int (*saco)[ARRAY_NUMBER] = malloc(ARRAY_SIZE * sizeof *saco);
 
-int ponteiro,linha_saco;
-int i,j,np;
+// recebo vetor
 
-	ponteiro=0;
-	
-if (my_rank == 0){//o primeiro cria a mensagem		
-	
-	np=proc_n;
-	
-	printf("\n Entrou no IF do processo %d",my_rank);
-	
-	for (j=0 ; j<ARRAY_NUMBER; j++)
-	{
-		for (i=0 ; i<ARRAY_SIZE; i++){              /* init array with worst case for sorting */
-			saco[j][i] = (ARRAY_SIZE+ARRAY_SIZE*j)-i;
-			//printf("\n j=%d e i=%d do processo %d",j,i,my_rank);
-		}
-	}
-	while(1){
-	   MPI_Recv (vetor_recebido, ARRAY_SIZE+1, MPI_INT , MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-	   
-	   if (status.MPI_TAG==42){ //mensagem pedindo trabalho
-		   dest=status.MPI_SOURCE;
-		   if(ponteiro<ARRAY_NUMBER){
-			   
-			   for(i=0;i<ARRAY_SIZE;i++) vetor_recebido[i] = saco[ponteiro][i];			   
-			   tag=43;
-			   /*Na última posição do vetor com tamanho ARRAY_SIZE+1 colocamos a linha origem */				
-			   vetor_recebido[ARRAY_SIZE]=ponteiro;
-				MPI_Send (vetor_recebido, ARRAY_SIZE+1, MPI_INT,dest, tag, MPI_COMM_WORLD);	   
-				ponteiro++;
-			} else {
-				//envia mensagem de Kill process
-				tag=1; // manda o processo morrer
-				MPI_Send (vetor_recebido, ARRAY_SIZE+1, MPI_INT,dest, tag, MPI_COMM_WORLD);	   				
-				np--;
-				printf("\n Processos restantes %d ",np);
-				// se terminaram os processos BREAK
-				if (np==1) break;
-			}
-	   } else if (status.MPI_TAG==43){
-		   linha_saco = vetor_recebido[ARRAY_SIZE]; // processo está devolvendo trabalho de qual linha?
-		   for(i=0;i<ARRAY_SIZE;i++) saco[linha_saco][i] = vetor_recebido[i];
-			
-			#ifdef DEBUG
-			printf("\n TODOS Elementos do Vetor Ordenado: ");
-			for (i=0 ; i<=ARRAY_SIZE; i++)              /* print sorted array */
-			printf("[%03d] ", vetor_recebido[i]);
-			#endif		   
-	   }
-	   
-	} 
-} 
-else if (my_rank>0) {
-	// os outros processos escravos
-	//int vetor_ordem[ARRAY_SIZE];
-			#ifdef DEBUG
-			printf("\nEntrou IF do Processo %d: ",my_rank);
-			#endif	
-	while(1){
-	   dest=0;
-	   tag=42;
-	   MPI_Send (vetor_recebido, ARRAY_SIZE+1, MPI_INT, dest, tag, MPI_COMM_WORLD);	 
-	   MPI_Recv (vetor_recebido, ARRAY_SIZE+1, MPI_INT , MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-	   if (status.MPI_TAG==43){
-			#ifdef DEBUG
-			printf("\nVetor unsorted: ");
-			for (i=0 ; i<=ARRAY_SIZE; i++)              /* print unsorted array */
-			printf("[%03d] ", vetor_recebido[i]);
-			#endif
-		   //linha_saco=vetor_recebido[ARRAY_SIZE];
-		   bs(ARRAY_SIZE,vetor_recebido);
-		   tag=43;
-		   MPI_Send (vetor_recebido, ARRAY_SIZE+1, MPI_INT, dest, tag, MPI_COMM_WORLD);
-	   } else if (status.MPI_TAG==1) {
-		   printf("\n Fim do processo %d \n",my_rank);
-		   break;
-	   }
-	}
+if ( my_rank != 0 )
+   {
+   MPI_Recv (vetor, pai);                       // não sou a raiz, tenho pai
+   MPI_Get_count(&Status, MPI_INT, &tam_vetor);  // descubro tamanho da mensagem recebida
+   }
+else
+   {
+   tam_vetor = ARRAY_SIZE;               // defino tamanho inicial do vetor
+   Inicializa();			 // sou a raiz e portanto gero o vetor - ordem reversa
+   }
+
+// dividir ou conquistar?
+
+if ( tam_vetor <= delta )
+   bs(ARRAY_SIZE,vetor);  // conquisto
+else
+       {
+    // dividir
+    // quebrar em duas partes e mandar para os filhos
+
+    MPI_Send ( &vetor[0], filho esquerda, tam_vetor/2 );  // mando metade inicial do vetor
+    MPI_Send ( &vetor[tam_vetor/2], filho direita , tam_vetor/2 );  // mando metade final
+
+    // receber dos filhos
+
+    MPI_Recv ( &vetor[0], filho esquerda);            
+    MPI_Recv ( &vetor[tam_vetor/2], filho direita);   
+
+    // intercalo vetor inteiro
+ 
+    vetor = intercala(vetor, ARRAY_SIZE);//ATENÇÃO
+    }
+
+// mando para o pai
+
+if ( my_rank !=0 )
+   MPI_Send( vetor, pai, tam_vetor);  // tenho pai, retorno vetor ordenado pra ele
+else{
+   printf("\nVetor: ");
+   for (i=0 ; i<ARRAY_SIZE; i++)              /* print unsorted array */
+      printf("[%03d] ", vetor[i]);                    // sou o raiz, mostro vetor
 }
-
-if (my_rank==0){
-	#ifdef DEBUG
-	printf("\n");
-	for (j=0 ; j<ARRAY_NUMBER; j++)
-	{
-		for (i=0 ; i<ARRAY_SIZE; i++){              /* imprime todo o saco de trabalho */
-			printf("[%03d] ", saco[j][i]);
-		}
-		printf("linha %d \n",j);
-	}
-	#endif
-
-	t1=inteiro[1];
-	t2 = MPI_Wtime(); // termina a contagem do tempo
-    	printf(" \nTempo gasto pela mensagem da Raiz até o processo %d: %f\n",my_rank, t2-t1);
-    	t1=inteiro[2];
-    	printf(" Tempo gasto pela mensagem desde o processo anterior até o processo %d: %f\n",my_rank, t2-t1);
-}
-  free(saco); 
 MPI_Finalize();
 }
