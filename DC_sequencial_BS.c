@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #define DEBUG 1            // comentar esta linha quando for medir tempo
-#define ARRAY_SIZE 40      // trabalho final com o valores 10.000, 100.000, 1.000.000
+#define ARRAY_SIZE 400      // trabalho final com o valores 10.000, 100.000, 1.000.000
 
 void bs(int n, int * vetor)
 {
