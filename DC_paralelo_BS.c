@@ -3,8 +3,8 @@
 #include "mpi.h"
  
 //#define DEBUG 1            // comentar esta linha quando for medir tempo
-#define ARRAY_SIZE 40 //100000     // trabalho final com o valores 10.000, 100.000, 1.000.000
-
+#define ARRAY_SIZE 1000000 //100000     // trabalho final com o valores 10.000, 100.000, 1.000.000
+#define delta 250000
  
 /* recebe um ponteiro para um vetor que contem as mensagens recebidas dos filhos e            */
 /* intercala estes valores em um terceiro vetor auxiliar. Devolve um ponteiro para este vetor */          
@@ -28,7 +28,7 @@ int *intercala(int vetor[], int tam)
 	}
 
 	return vetor_auxiliar;
-} 
+}
  
 void bs(int n, int * vetor)
 {
@@ -56,20 +56,27 @@ void inicializa(int * vetor,int tamanho)
         vetor[i] = tamanho-i;
 }
 
+void printaVetor(int * vetor2,int tamanho2)
+{
+	printf("\nVetor: ");
+   for (int i=0 ; i<tamanho2; i++)              /* print unsorted array */
+      printf("[%03d] ", vetor2[i]);                    // sou o raiz, mostro vetor
+}
+
 
 
 
 main(int argc, char** argv)
 {
 //int *vetor = (int *)malloc(sizeof(int)*ARRAY_SIZE);
-int (*vetor) = malloc(ARRAY_SIZE * sizeof *vetor);	
+int (*vetor) = malloc(ARRAY_SIZE * sizeof *vetor);
 //int vetor[ARRAY_SIZE];
 int tam_vetor;
 	
 int my_rank;  /* Identificador do processo */
 int proc_n;   /* Número de processos */
 int source;   /* Identificador do proc.origem */
-int dest,destE,destD;     /* Identificador do proc. destino */
+int dest,destE,destD,pai;     /* Identificador do proc. destino */
 int tag = 50; /* Tag para as mensagens */
 
 
@@ -84,23 +91,27 @@ double inteiro[10];
 double t1,t2;
 t1 = MPI_Wtime();  // inicia a contagem do tempo
 inteiro[1]=t1;
-int delta=10;
+
+//int arvore[proc_n][3];
+
+
 
 // num. total =>  an = 1*2^(n-1)
 // recebo vetor
 
 if ( my_rank != 0 )
-   {
+{
    //MPI_Recv (vetor, pai);                       // não sou a raiz, tenho pai
    MPI_Recv (vetor, ARRAY_SIZE, MPI_INT , MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-   //status.MPI_SOURCE
+   pai = status.MPI_SOURCE;
    MPI_Get_count(&status, MPI_INT, &tam_vetor);  // descubro tamanho da mensagem recebida
-   }
+   printf("\n Processo %d recebeu vetor de tamanho %d do processo %d",my_rank,tam_vetor,status.MPI_SOURCE);
+}
 else
-   {
+{
    tam_vetor = ARRAY_SIZE;               // defino tamanho inicial do vetor
    inicializa(vetor,tam_vetor);			 // sou a raiz e portanto gero o vetor - ordem reversa
-   }
+}
 
 // dividir ou conquistar?
 
@@ -108,29 +119,20 @@ if ( tam_vetor <= delta )
    bs(tam_vetor,vetor);  // conquisto
 else
 {
-	switch(my_rank) {
-		case 0 :
-			destE = 1;
-			destD = 2;
-			break;
-		case 1 :
-			destE = 3;
-			destD = 4;
-			break;
-		case 2 :
-			destE = 5;
-			destD = 6;
-			break;
-	}
+
+	destE = (2*my_rank)+1;
+	destD = destE+1;
+
 
     // dividir
     // quebrar em duas partes e mandar para os filhos
-
-    //MPI_Send ( &vetor[0], filho esquerda, tam_vetor/2 );  // mando metade inicial do vetor
-    MPI_Send (&vetor[0], tam_vetor/2, MPI_INT, destE, status.MPI_TAG, MPI_COMM_WORLD);	 
-    //MPI_Send ( &vetor[tam_vetor/2], filho direita , tam_vetor/2 );  // mando metade final
-    MPI_Send (&vetor[tam_vetor/2], tam_vetor/2, MPI_INT, destD, status.MPI_TAG, MPI_COMM_WORLD);	 
-
+    // para de enviar quando o número de processos terminar
+	if (destE<proc_n && destD<proc_n){
+		//MPI_Send ( &vetor[0], filho esquerda, tam_vetor/2 );  // mando metade inicial do vetor
+		MPI_Send (&vetor[0], tam_vetor/2, MPI_INT, destE, status.MPI_TAG, MPI_COMM_WORLD);	 
+		//MPI_Send ( &vetor[tam_vetor/2], filho direita , tam_vetor/2 );  // mando metade final
+		MPI_Send (&vetor[tam_vetor/2], tam_vetor/2, MPI_INT, destD, status.MPI_TAG, MPI_COMM_WORLD);	 
+	}
     // receber dos filhos
 
     //filho da esquerda
@@ -138,22 +140,21 @@ else
     // filho da direita
 	MPI_Recv (&vetor[tam_vetor/2], tam_vetor/2, MPI_INT , destD, MPI_ANY_TAG, MPI_COMM_WORLD, &status);         
 
-    // intercalo vetor inteiro
- 
+
     vetor = intercala(vetor, tam_vetor);//ATENÇÃO
-    }
+
+}
 
 // mando para o pai
 
 if ( my_rank !=0 ){
    //MPI_Send( vetor, pai, tam_vetor);  // tenho pai, retorno vetor ordenado pra ele
    printf("\n Filho %d enviando para o pai %d",my_rank,status.MPI_SOURCE);
-   MPI_Send (vetor, tam_vetor, MPI_INT, status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD);	 
+   MPI_Send (vetor, tam_vetor, MPI_INT, pai, status.MPI_TAG, MPI_COMM_WORLD);	 
 }
 else{
-   printf("\nVetor: ");
-   for (int i=0 ; i<ARRAY_SIZE; i++)              /* print unsorted array */
-      printf("[%03d] ", vetor[i]);                    // sou o raiz, mostro vetor
+       // sou o raiz, mostro vetor
+      printaVetor(vetor,ARRAY_SIZE);
 }
 	free(vetor);
 	MPI_Finalize();
