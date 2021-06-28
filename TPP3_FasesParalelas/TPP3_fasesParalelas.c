@@ -118,37 +118,50 @@ do{
     // para de enviar quando o número de processos terminar
 	if (destD<proc_n){
 		// envia para a direita o maior valor		
-		MPI_Send (&vetor[tam_vetor-1],1, MPI_INT, destD, 1, MPI_COMM_WORLD);
+		MPI_Send (&vetor[tam_vetor-2],2, MPI_INT, destD, 1, MPI_COMM_WORLD);
 	}
   
 	
 	if (my_rank>0){
 		//recebe da esquerda o maior valor
-		MPI_Recv (&buffer,1, MPI_INT , destE, 1, MPI_COMM_WORLD, &status);
-		printf("\n rec[%d]=%d",my_rank,buffer[0]);
-		if (buffer[0]>vetor[0]) {
+		MPI_Recv (&buffer,2, MPI_INT , destE, 1, MPI_COMM_WORLD, &status);
+		//printf("\n DEBUG1 My_rank=%d : Mensagem recebida do processo [%d] com Tag=%d e vetor [%d][%d]",my_rank,status.MPI_SOURCE,status.MPI_TAG,buffer[0],buffer[1]);
+		printf("\n rec[%d]=%d",my_rank,buffer[1]);
+		if (buffer[1]>vetor[0]) {
 			printf("\nProcesso %d: é maior que o meu menor",my_rank);
-			//envia os valores mais baixos para o vizinho da esquerda
-			MPI_Send (&vetor[0], 2, MPI_INT, destE, 2, MPI_COMM_WORLD);
-		} else MPI_Send (&vetor[0], 2, MPI_INT, destE, 171, MPI_COMM_WORLD);//fake
+			//envia menores esquerda
+			MPI_Send (&vetor[0], 2, MPI_INT, destE, 2, MPI_COMM_WORLD);			
+		} else MPI_Send (&vetor[0], 2, MPI_INT, destE, 171, MPI_COMM_WORLD);//fake para não travar o programa da esquerda
 	}
 
-	MPI_Recv (&buffer[0], 2, MPI_INT , MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-	/*printf("\n buffer[%d]=%d",0,buffer[0]);
-	printf("\n buffer[%d]=%d",1,buffer[1]);*/
-	//TAG de troca de elementos
-	if (status.MPI_TAG==2){
-		if (status.MPI_SOURCE==destD){// tenho que devolver os maiores
-			MPI_Send (&vetor[tam_vetor-2], 2, MPI_INT, status.MPI_SOURCE, 2, MPI_COMM_WORLD);
-			vetor[tam_vetor-2]=buffer[0];
-			vetor[tam_vetor-1]=buffer[1];
-			bs(tam_vetor,vetor); //ordeno novamente
-		} else if (status.MPI_SOURCE==destE){// não respondo			
-			vetor[0]=buffer[0];
-			vetor[1]=buffer[1];
-			bs(tam_vetor,vetor); //ordeno novamente
+	//processos das pontas executam um recebimento
+	if (my_rank<(proc_n-1)){
+		MPI_Recv (&buffer[0], 2, MPI_INT , destD, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+		//Recebeu menores da direita
+		if (status.MPI_TAG!=2 || status.MPI_TAG!=171) printf("\n ->ERROR!!!!! \n");
+		if (status.MPI_TAG==2){			
+				//envia maiores para a direita
+				MPI_Send (&vetor[tam_vetor-2], 2, MPI_INT, destD, 3, MPI_COMM_WORLD);
+				vetor[tam_vetor-2]=buffer[0];
+				vetor[tam_vetor-1]=buffer[1];
+				bs(tam_vetor,vetor); //ordeno novamente
 		}
 	}
+	
+	//processos das pontas executam um recebimento
+	if(my_rank>0){
+		MPI_Recv (&buffer[0], 2, MPI_INT , destE, 3, MPI_COMM_WORLD, &status);
+		/*printf("\n buffer[%d]=%d",0,buffer[0]);
+		printf("\n buffer[%d]=%d",1,buffer[1]);*/
+		printf("\n DEBUG2 My_rank=%d : Mensagem recebida do processo [%d] com Tag=%d e vetor [%d][%d]",my_rank,status.MPI_SOURCE,status.MPI_TAG,buffer[0],buffer[1]);
+
+		//Recebeu maiores da esquerda
+			vetor[1]=buffer[1];
+			vetor[0]=buffer[0];
+			bs(tam_vetor,vetor); //ordeno novamente		
+	}	
+
+		printf("\n DEBUG4 My_rank=%d num_Passos=%d",my_rank,n_passos);
 		printaVetor(vetor,tam_vetor,my_rank);			
 		n_passos--;
 } while(n_passos>0);
