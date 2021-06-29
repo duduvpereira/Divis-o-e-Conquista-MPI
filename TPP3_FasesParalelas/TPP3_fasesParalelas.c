@@ -55,6 +55,7 @@ void inicializa(int * vetor,int tamanho,int myrank,int np)
     int i;
     for (i=0 ; i<tamanho; i++)              /* init array with worst case for sorting */
         vetor[i] = (tamanho*(np-myrank))-i;
+        //vetor[i] = (tamanho*myrank)+i;
 }
 
 void printaVetor(int * vetor2,int tamanho2, int myrank)
@@ -73,6 +74,7 @@ int proc_n;   /* Número de processos */
 int source;   /* Identificador do proc.origem */
 int dest,destE,destD,pai;     /* Identificador do proc. destino */
 int tag = 50; /* Tag para as mensagens */
+int ind_ordenados; 
 
 
 MPI_Status status; /* Status de retorno */
@@ -87,31 +89,27 @@ double t1,t2;
 t1 = MPI_Wtime();  // inicia a contagem do tempo
 inteiro[1]=t1;
 
-//int arvore[proc_n][3];
+int fila_processos[proc_n];
 
 
 
-// num. total =>  an = 1*2^(n-1)
-// recebo vetor
 
-
-	int tam_vetor,n_passos;
+	int tam_vetor;
 	int buffer[2];	
 	tam_vetor = ARRAY_SIZE/proc_n;               // defino tamanho inicial do vetor
 	int (*vetor) = malloc(tam_vetor * sizeof *vetor);
 	inicializa(vetor,tam_vetor,my_rank,proc_n);			 // sou a raiz e portanto gero o vetor - ordem reversa
 
-//printf("Vetor processo %d", my_rank);
-//printaVetor(vetor,tam_vetor);
 
-// dividir ou conquistar?
+
+// Ordena
 
    bs(tam_vetor,vetor);  // conquisto
 
 
 	destE = my_rank-1;
 	destD = my_rank+1;
-	n_passos=10;
+	
 do{
     // dividir
     // quebrar em duas partes e mandar para os filhos
@@ -129,42 +127,58 @@ do{
 		printf("\n rec[%d]=%d",my_rank,buffer[1]);
 		if (buffer[1]>vetor[0]) {
 			printf("\nProcesso %d: é maior que o meu menor",my_rank);
-			//envia menores esquerda
-			MPI_Send (&vetor[0], 2, MPI_INT, destE, 2, MPI_COMM_WORLD);			
-		} else MPI_Send (&vetor[0], 2, MPI_INT, destE, 171, MPI_COMM_WORLD);//fake para não travar o programa da esquerda
+			fila_processos[my_rank]=1;			
+		} 
 	}
+	
+	for (int p_raiz=0;p_raiz<proc_n;p_raiz++)	
+		MPI_Bcast (&fila_processos[p_raiz],1, MPI_INT, p_raiz, MPI_COMM_WORLD);
 
-	//processos das pontas executam um recebimento
-	if (my_rank<(proc_n-1)){
-		MPI_Recv (&buffer[0], 2, MPI_INT , destD, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-		//Recebeu menores da direita
-		if (status.MPI_TAG!=2 || status.MPI_TAG!=171) printf("\n ->ERROR!!!!! \n");
-		if (status.MPI_TAG==2){			
-				//envia maiores para a direita
-				MPI_Send (&vetor[tam_vetor-2], 2, MPI_INT, destD, 3, MPI_COMM_WORLD);
-				vetor[tam_vetor-2]=buffer[0];
-				vetor[tam_vetor-1]=buffer[1];
-				bs(tam_vetor,vetor); //ordeno novamente
+	ind_ordenados=1;
+	for (int p_raiz=0;p_raiz<proc_n;p_raiz++){
+		if (fila_processos[p_raiz]==1){
+			ind_ordenados=0;
+			break;
 		}
 	}
+	
+	if (ind_ordenados==1) break;
+	
+	//envia menores esquerda
+	if (my_rank>0) MPI_Send (&vetor[0], 2, MPI_INT, destE, 2, MPI_COMM_WORLD);			
+	
+	//processos das pontas executam um recebimento
+	if (destD<proc_n){
+		MPI_Recv (&buffer[0], 2, MPI_INT , destD, 2, MPI_COMM_WORLD, &status);
+		//Recebeu menores da direita
+		printf("\n DEBUG2 My_rank=%d : Mensagem recebida do processo [%d] com Tag=%d e vetor [%d][%d]",my_rank,destD,2,buffer[0],buffer[1]);
+		//envia maiores para a direita
+		MPI_Send (&vetor[tam_vetor-2], 2, MPI_INT, destD, 3, MPI_COMM_WORLD);
+		vetor[tam_vetor-2]=buffer[0];
+		vetor[tam_vetor-1]=buffer[1];
+		printaVetor(vetor,tam_vetor,my_rank);			
+		//bs(tam_vetor,vetor); //ordeno novamente
+	}
+	printaVetor(vetor,tam_vetor,my_rank);			
 	
 	//processos das pontas executam um recebimento
 	if(my_rank>0){
 		MPI_Recv (&buffer[0], 2, MPI_INT , destE, 3, MPI_COMM_WORLD, &status);
 		/*printf("\n buffer[%d]=%d",0,buffer[0]);
 		printf("\n buffer[%d]=%d",1,buffer[1]);*/
-		printf("\n DEBUG2 My_rank=%d : Mensagem recebida do processo [%d] com Tag=%d e vetor [%d][%d]",my_rank,status.MPI_SOURCE,status.MPI_TAG,buffer[0],buffer[1]);
+		printf("\n DEBUG3 My_rank=%d : Mensagem recebida do processo [%d] com Tag=%d e vetor [%d][%d]",my_rank,destE,3,buffer[0],buffer[1]);
 
 		//Recebeu maiores da esquerda
 			vetor[1]=buffer[1];
 			vetor[0]=buffer[0];
-			bs(tam_vetor,vetor); //ordeno novamente		
+			//bs(tam_vetor,vetor); //ordeno novamente		
 	}	
+		
 
-		printf("\n DEBUG4 My_rank=%d num_Passos=%d",my_rank,n_passos);
-		printaVetor(vetor,tam_vetor,my_rank);			
-		n_passos--;
-} while(n_passos>0);
+		bs(tam_vetor,vetor); //ordeno novamente		
+		
+//break;
+} while(1);
 
 
     
