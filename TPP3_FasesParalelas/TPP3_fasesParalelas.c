@@ -94,41 +94,46 @@ int fila_processos[proc_n];
 
 
 
-	int tam_vetor;
-	int buffer[2];	
-	tam_vetor = ARRAY_SIZE/proc_n;               // defino tamanho inicial do vetor
-	int (*vetor) = malloc(tam_vetor * sizeof *vetor);
-	inicializa(vetor,tam_vetor,my_rank,proc_n);			 // sou a raiz e portanto gero o vetor - ordem reversa
+	int tam_vet_real;
+	int tam_vet_virtual;
+		
+	tam_vet_virtual = ARRAY_SIZE/proc_n;               // defino tamanho inicial do vetor	
+	tam_vet_real = tam_vet_virtual*1.2;               // defino 20% de buffer	
+	int (*vetor) = malloc(tam_vet_real * sizeof *vetor);
+	int buffer[1];		//buffer é a diferença
+	int tam_buffer;		//buffer é a diferença
+	tam_buffer=tam_vet_real-tam_vet_virtual;
+	inicializa(vetor,tam_vet_virtual,my_rank,proc_n);			 // sou a raiz e portanto gero o vetor - ordem reversa
 
 
 
 // Ordena
 
-   bs(tam_vetor,vetor);  // conquisto
+   bs(tam_vet_virtual,vetor);  // conquisto
 
 
 	destE = my_rank-1;
 	destD = my_rank+1;
 	
-do{
+for(int vezes=0;vezes<2;vezes++){
     // dividir
     // quebrar em duas partes e mandar para os filhos
     // para de enviar quando o número de processos terminar
 	if (destD<proc_n){
 		// envia para a direita o maior valor		
-		MPI_Send (&vetor[tam_vetor-2],2, MPI_INT, destD, 1, MPI_COMM_WORLD);
+		MPI_Send (&vetor[tam_vet_virtual-1],1, MPI_INT, destD, 1, MPI_COMM_WORLD);
 	}
   
 	
 	if (my_rank>0){
 		//recebe da esquerda o maior valor
-		MPI_Recv (&buffer,2, MPI_INT , destE, 1, MPI_COMM_WORLD, &status);
+		MPI_Recv (&buffer[0],1, MPI_INT , destE, 1, MPI_COMM_WORLD, &status);
 		//printf("\n DEBUG1 My_rank=%d : Mensagem recebida do processo [%d] com Tag=%d e vetor [%d][%d]",my_rank,status.MPI_SOURCE,status.MPI_TAG,buffer[0],buffer[1]);
-		printf("\n rec[%d]=%d",my_rank,buffer[1]);
-		if (buffer[1]>vetor[0]) {
+		printf("\n rec[%d]=%d",my_rank,buffer[0]);
+		if (buffer[0]>vetor[0]) {
 			printf("\nProcesso %d: é maior que o meu menor",my_rank);
 			fila_processos[my_rank]=1;			
-		} 
+		} else fila_processos[my_rank]=0;
 	}
 	
 	for (int p_raiz=0;p_raiz<proc_n;p_raiz++)	
@@ -145,40 +150,35 @@ do{
 	if (ind_ordenados==1) break;
 	
 	//envia menores esquerda
-	if (my_rank>0) MPI_Send (&vetor[0], 2, MPI_INT, destE, 2, MPI_COMM_WORLD);			
+	if (my_rank>0) MPI_Send (&vetor[0], tam_buffer, MPI_INT, destE, 2, MPI_COMM_WORLD);			
 	
 	//processos das pontas executam um recebimento
 	if (destD<proc_n){
-		MPI_Recv (&buffer[0], 2, MPI_INT , destD, 2, MPI_COMM_WORLD, &status);
+		MPI_Recv (&vetor[tam_vet_virtual], tam_buffer, MPI_INT , destD, 2, MPI_COMM_WORLD, &status);
 		//Recebeu menores da direita
-		printf("\n DEBUG2 My_rank=%d : Mensagem recebida do processo [%d] com Tag=%d e vetor [%d][%d]",my_rank,destD,2,buffer[0],buffer[1]);
+		printf("\n DEBUG2 My_rank=%d : Mensagem recebida do processo [%d] com Tag=%d e vetor [%d][%d]",my_rank,destD,2,vetor[tam_vet_virtual],vetor[tam_vet_virtual+1]);
+		printaVetor(vetor,tam_vet_real,my_rank);
+		bs(2*tam_buffer,&vetor[tam_vet_real-2*tam_buffer]); //ordeno novamente a partir da distância quadrática
 		//envia maiores para a direita
-		MPI_Send (&vetor[tam_vetor-2], 2, MPI_INT, destD, 3, MPI_COMM_WORLD);
-		vetor[tam_vetor-2]=buffer[0];
-		vetor[tam_vetor-1]=buffer[1];
-		printaVetor(vetor,tam_vetor,my_rank);			
-		//bs(tam_vetor,vetor); //ordeno novamente
+		MPI_Send (&vetor[tam_vet_real-2], tam_buffer, MPI_INT, destD, 3, MPI_COMM_WORLD);
+		printaVetor(vetor,tam_vet_real,my_rank);
 	}
-	printaVetor(vetor,tam_vetor,my_rank);			
+	
 	
 	//processos das pontas executam um recebimento
 	if(my_rank>0){
-		MPI_Recv (&buffer[0], 2, MPI_INT , destE, 3, MPI_COMM_WORLD, &status);
+		MPI_Recv (&vetor[0], tam_buffer, MPI_INT , destE, 3, MPI_COMM_WORLD, &status);
+		bs(tam_vet_virtual,vetor); //ordeno novamente		
 		/*printf("\n buffer[%d]=%d",0,buffer[0]);
 		printf("\n buffer[%d]=%d",1,buffer[1]);*/
-		printf("\n DEBUG3 My_rank=%d : Mensagem recebida do processo [%d] com Tag=%d e vetor [%d][%d]",my_rank,destE,3,buffer[0],buffer[1]);
-
-		//Recebeu maiores da esquerda
-			vetor[1]=buffer[1];
-			vetor[0]=buffer[0];
-			//bs(tam_vetor,vetor); //ordeno novamente		
+		printf("\n DEBUG3 My_rank=%d : Mensagem recebida do processo [%d] com Tag=%d e vetor [%d][%d]",my_rank,destE,3,vetor[0],vetor[1]);		
 	}	
 		
 
-		bs(tam_vetor,vetor); //ordeno novamente		
 		
-//break;
-} while(1);
+		
+
+} //while(1);
 
 
     
@@ -188,13 +188,13 @@ do{
 // mando para o pai
 
 /*if ( my_rank !=0 ){
-   //MPI_Send( vetor, pai, tam_vetor);  // tenho pai, retorno vetor ordenado pra ele
+   //MPI_Send( vetor, pai, tam_vet_real);  // tenho pai, retorno vetor ordenado pra ele
    printf("\n Filho %d enviando para o pai %d",my_rank,status.MPI_SOURCE);
-   MPI_Send (vetor, tam_vetor, MPI_INT, pai, status.MPI_TAG, MPI_COMM_WORLD);	 
+   MPI_Send (vetor, tam_vet_real, MPI_INT, pai, status.MPI_TAG, MPI_COMM_WORLD);	 
 }*/
 
        // sou o raiz, mostro vetor      
-      printaVetor(vetor,tam_vetor,my_rank);
+      printaVetor(vetor,tam_vet_virtual,my_rank);
 
 	free(vetor);
 	MPI_Finalize();
