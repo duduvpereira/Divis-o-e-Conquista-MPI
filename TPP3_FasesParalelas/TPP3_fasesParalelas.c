@@ -99,7 +99,7 @@ int fila_processos[proc_n];
         int tam_vet_orig;
 
         tam_vet_orig = ARRAY_SIZE/proc_n;               // defino tamanho inicial do vetor
-        tam_vet_ext = tam_vet_orig*1.2;               // defino 20% de buffer
+        tam_vet_ext = tam_vet_orig*1.5;               // defino 20% de buffer
         int (*vetor) = malloc(tam_vet_ext * sizeof *vetor);
         int buffer[1];          //buffer é a diferença
         int tam_buffer;         //buffer é a diferença
